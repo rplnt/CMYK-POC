@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 class Tile {
-    private static readonly byte[] cmyGen = { 1, 2, 4 };
+    private static readonly byte[] cmyGen = { 1 << 0, 1 << 1, 1 << 2 };
     public static readonly byte color_c = 1 << 0;
     public static readonly byte color_m = 1 << 1;
     public static readonly byte color_y = 1 << 2;
@@ -99,6 +99,7 @@ public class GameBoard : MonoBehaviour {
     Texture2D boardTexture;
 
     public float updateDelay;
+    public int tilePixelSize;
 
     [Header("Game Options")]
     public int width;
@@ -113,23 +114,27 @@ public class GameBoard : MonoBehaviour {
     byte activeColor;
 
     float lastUpdate = 0.0f;
+    bool gameOver = false;
 
 
 	void Start () {
-        Debug.Assert(width%2 == 1);
+        Debug.Assert(width % 2 == 1, "Board width has to be odd");
+        Debug.Assert(tilePixelSize % 2 == 1, "Tile size has to be odd");
+        Debug.Assert(tilePixelSize > 2, "Tile size has to be greater than 2");
 
         board = new Tile[width, height];
         spawnerX = (width / 2);
 
         /* create board */
-        boardTexture = new Texture2D(5 * width, 5 * height);
+        boardTexture = new Texture2D(width * tilePixelSize, height * tilePixelSize);
         boardTexture.filterMode = FilterMode.Point;
-        boardSR.sprite = Sprite.Create(boardTexture, new Rect(0, 0, 5 * width, 5 * height), new Vector2(0.5f, 0.5f));
+        boardSR.sprite = Sprite.Create(boardTexture, new Rect(0, 0, width * tilePixelSize, height * tilePixelSize), new Vector2(0.5f, 0.5f));
         PaintBoard();
 	}
 	
 
 	void Update () {
+        if (gameOver) return;
         bool redraw = false;
 
         if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.DownArrow)) {
@@ -152,11 +157,17 @@ public class GameBoard : MonoBehaviour {
         if (Time.time > lastUpdate + updateDelay) {
             lastUpdate = Time.time;
             if (!MoveBoard()) {
-                if (board[spawnerX, height - 1] != null) {
-                    Debug.Log("Game over");
-                    return;
-                }
-                activeTile = new Tile(spawnerX, height - 1);
+                Tile newTile = new Tile(spawnerX, height - 1);
+
+                if (board[spawnerX, height - 1] == null) {
+                    activeTile = newTile;
+                } else if (board[spawnerX, height - 1].Contains(newTile.color) == false) {
+                    board[spawnerX, height - 1] += newTile.color;
+                } else {
+                    gameOver = true;
+                    Debug.Log("Game Over");
+                }            
+                
                 activeColor = activeTile.color;
                 board[spawnerX, height - 1] = activeTile;
             }
@@ -185,24 +196,29 @@ public class GameBoard : MonoBehaviour {
     }
 
     void PaintTile(int x, int y, Tile t) {
-        for (int i = 0; i < 25; i++) {
+        for (int i = 0; i < tilePixelSize * tilePixelSize; i++) {
             Color c;
-            switch (i) {
-                case 17:
-                    c = t.GetSubcolor(Tile.color_c);
-                    break;
-                case 8:
-                    c = t.GetSubcolor(Tile.color_m);
-                    break;
-                case 6:
-                    c = t.GetSubcolor(Tile.color_y);
-                    break;
-                default:
-                    c = t.GetColor();
-                    break;
-            }
+            //switch (i) {
+            //    case 17:
+            //        c = t.GetSubcolor(Tile.color_c);
+            //        break;
+            //    case (tilePixelSize/2 + tilePixelSize * (tilePixelSize / 3) + 1):
+            //        c = t.GetSubcolor(Tile.color_m);
+            //        break;
+            //    case ():
+            //        c = t.GetSubcolor(Tile.color_y);
+            //        break;
+            //    default:
+            //        c = t.GetColor();
+            //        break;
+            //}
 
-            boardTexture.SetPixel(x * 5 + i % 5, y * 5 + i / 5, c);
+            if (i == (tilePixelSize * tilePixelSize - tilePixelSize * (tilePixelSize / 3) - tilePixelSize / 2 - 1)) { c = t.GetSubcolor(Tile.color_c); }
+            else if (i == (tilePixelSize / 2 + tilePixelSize * (tilePixelSize / 3) + 1)) { c = t.GetSubcolor(Tile.color_m); }
+            else if (i == (tilePixelSize / 2 + tilePixelSize * (tilePixelSize / 3) - 1)) { c = t.GetSubcolor(Tile.color_y); } 
+            else { c = t.GetColor(); }
+
+            boardTexture.SetPixel(x * tilePixelSize + i % tilePixelSize, y * tilePixelSize + i / tilePixelSize, c);
         }
     }
 
@@ -241,7 +257,9 @@ public class GameBoard : MonoBehaviour {
 
     bool MoveTileDown(int x, int y) {
         Debug.Assert(board[x, y] != null, "Moving nonexisting tile");
-        //Debug.Assert(board[x, y].color == 0, "Moving empty tile " + board[x, y]);
+        Debug.Assert(board[x, y].color != 0, "Moving empty tile " + board[x, y]);
+
+        if (y == 0) return false;
 
         /* active tile can pass through */
         if (x == activeTile.x && y == activeTile.y) {
@@ -282,23 +300,23 @@ public class GameBoard : MonoBehaviour {
 
     bool MoveBoard() {
         // move all pieces, if nothing was moved return false
-        bool moved = false;
+        bool movedAnything = false;
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 if (board[x, y] == null) continue;
-                if (board[x, y].color == Tile.color_k) {
+
+                /* move tile */
+                bool moved = MoveTileDown(x, y);
+                movedAnything |= moved;
+
+                if (!moved && board[x, y].color == Tile.color_k) {
                     board[x, y] = null;
                     score++;
                     continue;
                 }
-
-                if (y == 0) continue;
-
-                /* move tile */
-                moved = MoveTileDown(x, y);
             }
         }
 
-        return moved;
+        return movedAnything;
     }
 }
