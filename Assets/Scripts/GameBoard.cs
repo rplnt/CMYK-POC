@@ -42,13 +42,14 @@ class Tile {
         return new Tile(left.x, left.y, left.color | right.color);
     }
 
-    public static Tile operator -(Tile left, Tile right) {
-        if (left == null) return null;
-        if (right == null) return left;
-        // TODO TODO TODODODODO
-        Debug.Assert(left.Contains(right.color));
+    public static Tile operator +(Tile left, byte c) {
+        left.color |= c;
+        return left;
+    }
 
-        return new Tile(left.x, left.y, left.color ^ right.color);
+    public static Tile operator -(Tile left, byte c) {
+        left.color ^= c;
+        return left;
     }
 
     public void Add(Tile other) {
@@ -75,21 +76,16 @@ class Tile {
     }
 
     public override string ToString() {
-        return base.ToString() + "(" + this.color + ")";
+        return base.ToString() + "(" + this.color + ") @[" + x + "," + y + "]";
+    }
+
+    public Tile MoveSideways(int x) {
+        this.x += x;
+        return this;
     }
 
     public Tile MoveDown() {
         y--;
-        return this;
-    }
-
-    public Tile MoveLeft() {
-        x--;
-        return this;
-    }
-
-    public Tile MoveRight() {
-        x++;
         return this;
     }
 
@@ -102,6 +98,8 @@ public class GameBoard : MonoBehaviour {
     public SpriteRenderer boardSR;
     Texture2D boardTexture;
 
+    public float updateDelay;
+
     [Header("Game Options")]
     public int width;
     public int height;
@@ -112,6 +110,7 @@ public class GameBoard : MonoBehaviour {
 
     Tile[,] board;
     Tile activeTile;
+    byte activeColor;
 
     float lastUpdate = 0.0f;
 
@@ -132,18 +131,6 @@ public class GameBoard : MonoBehaviour {
 
 	void Update () {
         bool redraw = false;
-        if (Time.time > lastUpdate + 0.25f) {
-            lastUpdate = Time.time;
-            if (!MoveBoard()) {
-                if (board[spawnerX, height - 1] != null) {
-                    Debug.Log("Game over");
-                    return;
-                }
-                activeTile = new Tile(spawnerX, height - 1);
-                board[spawnerX, height - 1] = activeTile;
-            }
-            redraw = true;
-        }
 
         if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.DownArrow)) {
             while (activeTile.y > 0 && MoveTileDown(activeTile.x, activeTile.y)) {
@@ -152,21 +139,28 @@ public class GameBoard : MonoBehaviour {
         }
 
         if (Input.GetKeyDown(KeyCode.LeftArrow)) {
-            int newX = activeTile.x - 1;
-            if (activeTile.x > 0 && (board[newX, activeTile.y] == null || board[newX, activeTile.y].Contains(activeTile.color) == false)) {
-                board[activeTile.x, activeTile.y] = null;
-                board[activeTile.x - 1, activeTile.y] += activeTile.MoveLeft();
-                activeTile = board[activeTile.x, activeTile.y];
-                redraw = true;
+            if (activeTile.x > 0) {
+                redraw |= MoveActiveTile(-1);
             }
         } else if (Input.GetKeyDown(KeyCode.RightArrow)) {
-            int newX = activeTile.x + 1;
-            if (activeTile.x < width - 1 && (board[newX, activeTile.y] == null || board[newX, activeTile.y].Contains(activeTile.color) == false)) {
-                board[activeTile.x, activeTile.y] = null;
-                board[activeTile.x + 1, activeTile.y] += activeTile.MoveRight();
-                activeTile = board[activeTile.x, activeTile.y];
-                redraw = true;
+            if (activeTile.x < width - 1) {
+                redraw |= MoveActiveTile(+1);
             }
+        }
+
+        /* update borad */
+        if (Time.time > lastUpdate + updateDelay) {
+            lastUpdate = Time.time;
+            if (!MoveBoard()) {
+                if (board[spawnerX, height - 1] != null) {
+                    Debug.Log("Game over");
+                    return;
+                }
+                activeTile = new Tile(spawnerX, height - 1);
+                activeColor = activeTile.color;
+                board[spawnerX, height - 1] = activeTile;
+            }
+            redraw = true;
         }
 
         if (redraw) {
@@ -178,7 +172,6 @@ public class GameBoard : MonoBehaviour {
     void PaintBoard() {
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                Color c;
                 if (board[x, y] == null) {
                     PaintTile(x, y, Tile.empty);
                 } else {
@@ -213,14 +206,76 @@ public class GameBoard : MonoBehaviour {
         }
     }
 
-    bool MoveTileDown(int x, int y) {
-        Debug.Assert(y - 1 >= 0, "Tile tried to move outside of board");
 
-        if (!board[x, y].Contains(board[x, y - 1])) {
+    bool MoveActiveTile(int direction) {
+        int newX = activeTile.x + direction;
+
+        if (board[newX, activeTile.y] == null) {
+            if (activeTile.color == activeColor) {
+                Debug.Log("null -> [ ] -> null");
+                board[activeTile.x, activeTile.y] = null;
+                board[newX, activeTile.y] = activeTile.MoveSideways(direction);
+            } else {
+                Debug.Log("[ ] -> [ ] -> null ");
+                board[activeTile.x, activeTile.y] -= activeColor;
+                board[newX, activeTile.y] = new Tile(newX, activeTile.y, activeColor);
+                activeTile = board[newX, activeTile.y];
+            }
+            return true;
+        } else if (board[newX, activeTile.y].Contains(activeTile.color) == false) {
+            if (activeTile.color == activeColor) {
+                Debug.Log("null -> [ ] -> [ ]");
+                board[activeTile.x, activeTile.y] = null;
+            } else {
+                Debug.Log("[ ] -> [ ] -> [ ]");
+                board[activeTile.x, activeTile.y] -= activeColor;
+            }
+            board[newX, activeTile.y] += activeTile.color;
+            activeTile = board[newX, activeTile.y];
+            return true;
+        }
+        
+        return false;
+    }
+
+
+    bool MoveTileDown(int x, int y) {
+        Debug.Assert(board[x, y] != null, "Moving nonexisting tile");
+        //Debug.Assert(board[x, y].color == 0, "Moving empty tile " + board[x, y]);
+
+        /* active tile can pass through */
+        if (x == activeTile.x && y == activeTile.y) {
+            //Debug.Log("Processing active tile " + board[x, y]);
+
+            if (board[x, y - 1] == null) {
+                if (board[x, y] == activeTile) {
+                    board[x, y - 1] = board[x, y].MoveDown();
+                    board[x, y] = null;
+                } else {
+                    board[x, y] -= activeColor;
+                    if (board[x, y].color == 0) board[x, y] = null;
+                    board[x, y - 1] = new Tile(x, y - 1, activeColor);
+                    activeTile = board[x, y - 1];
+                }
+                return true;
+            }
+
+            if (board[x, y - 1] != null && board[x, y - 1].Contains(activeColor) == false) {
+                board[x, y] -= activeColor;
+                if (board[x, y].color == 0) board[x, y] = null;
+                board[x, y - 1] += activeColor;
+                activeTile = board[x, y - 1];
+                return true;
+            }
+            
+        }
+
+        if (board[x, y].Contains(board[x, y - 1]) == false) {
             board[x, y - 1] += board[x, y].MoveDown();
             board[x, y] = null;
             return true;
         }
+
         return false;
     }
 
@@ -232,7 +287,6 @@ public class GameBoard : MonoBehaviour {
             for (int x = 0; x < width; x++) {
                 if (board[x, y] == null) continue;
                 if (board[x, y].color == Tile.color_k) {
-                    Debug.Log("Cleared " + x + ", " + y);
                     board[x, y] = null;
                     score++;
                     continue;

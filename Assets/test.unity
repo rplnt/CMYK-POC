@@ -294,6 +294,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   boardSR: {fileID: 1863272}
+  updateDelay: 1
   width: 7
   height: 12
   score: 0
