@@ -26,7 +26,8 @@ public class GameBoard : MonoBehaviour {
     int spawnerX;
 
     Tile[,] board;
-    Tile activeTile;
+    //Tile activeTile;
+    Tile[] activeTiles;
 
     float lastUpdate = 0.0f;
     bool gameOver = false;
@@ -36,6 +37,7 @@ public class GameBoard : MonoBehaviour {
         Debug.Assert(width % 2 == 1, "Board width has to be odd");
         Debug.Assert(tilePixelSize % 2 == 1, "Tile size has to be odd");
         Debug.Assert(tilePixelSize > 2, "Tile size has to be greater than 2");
+        activeTiles = new Tile[spawnGroupSize];
 
         board = new Tile[width, height];
         spawnerX = (width / 2);
@@ -87,7 +89,7 @@ public class GameBoard : MonoBehaviour {
 
     bool ProcessInput() {
         bool redraw = false;
-        if (Input.GetKeyDown(KeyCode.DownArrow) && activeTile.y > 0) {
+        if (Input.GetKeyDown(KeyCode.DownArrow)) {
             redraw = MoveActiveGroup(0, -1);
         }
 
@@ -107,17 +109,16 @@ public class GameBoard : MonoBehaviour {
 
     bool SpawnNewTiles(int size) {
         Debug.Assert(size >= 1, "At least one tile has to be spawned");
-        //List<Tile> newTiles = new List<Tile>();
-        Tile[] newTiles = new Tile[size];
 
         /* prepare tiles */
         for (int i = size; i > 0; i--) {
-            newTiles[i - 1] = new Tile(spawnerX, height - i, true);
+            // FIXME allow same-color tiles
+            activeTiles[i - 1] = new Tile(spawnerX, height - i, true);
 
             /* check for game over */
             if (board[spawnerX, height - i] == null) continue;
-            if (board[spawnerX, height - i].Contains(newTiles[i - 1].color)) {
-                Debug.Log("Position at " + spawnerX + ", " + (height - i) + " doesn't seem to be good for " + newTiles[i - 1]);
+            if (board[spawnerX, height - i].Contains(activeTiles[i - 1].color)) {
+                Debug.Log("Position at " + spawnerX + ", " + (height - i) + " doesn't seem to be good for " + activeTiles[i - 1]);
                 return false;
             }
         }
@@ -125,21 +126,14 @@ public class GameBoard : MonoBehaviour {
         /* place tiles */
         for (int i = size; i > 0; i--) {
             if (board[spawnerX, height - i] == null) {
-                board[spawnerX, height - i] = newTiles[i - 1];
+                board[spawnerX, height - i] = activeTiles[i - 1];
             } else {
-                board[spawnerX, height - i] += newTiles[i - 1].color;
-                board[spawnerX, height - i].activeComponent = newTiles[i - 1].color;
-            }
-
-            if (i < size) {
-                newTiles[i - 1].parent = newTiles[i];
+                board[spawnerX, height - i] += activeTiles[i - 1].color;
+                board[spawnerX, height - i].activeComponent = activeTiles[i - 1].color;
             }
 
             total++;
         }
-
-
-        activeTile = newTiles[size - 1];
 
         return true;
     }
@@ -176,46 +170,41 @@ public class GameBoard : MonoBehaviour {
 
 
     bool MoveActiveGroup(int dirX, int dirY) {
-        if (activeTile == null) return false;
-        Tile subtile = activeTile;
+        Debug.Assert(dirY <= 0, "MoveActiveGroup: Can't move upwards");
         bool canMove = true;
         /* check if all can be moved first */
-        while (subtile != null) {
-            canMove = canMove && CanMoveActiveTile(subtile, dirX, dirY);
-            subtile = subtile.parent;
+        for (int i = activeTiles.Length - 1; i >= 0; i--) {
+            if (activeTiles[i] == null) return false;
+            canMove = canMove && CanMoveActiveTile(activeTiles[i], dirX, dirY);
         }
 
         if (!canMove) {
-            Debug.Log("Cannot move group with " + activeTile);
+            Debug.Log("Cannot move active group");
             return false;
         }
-        
-        subtile = activeTile;
-        while (subtile != null) {
-            Debug.Assert(subtile.active, "Operating with inactive subtile " + subtile);
 
-            if (subtile.color == subtile.activeComponent) {
-                //Debug.Log(subtile + "null -> [T]");
-                board[subtile.x, subtile.y] = null;
+        for (int i = activeTiles.Length - 1; i >= 0; i--) {
+            Tile tile = activeTiles[i];
+            Debug.Assert(tile.active, "Operating with inactive subtile " + tile);
+
+            if (tile.color == tile.activeComponent) {
+                Debug.Log(tile + " null -> [T]");
+                board[tile.x, tile.y] = null;
             } else {
-                //Debug.Log(subtile + "[ ] -> [T]");
-                board[subtile.x, subtile.y] = new Tile(subtile.x, subtile.y, subtile.color - subtile.activeComponent, false);
+                Debug.Log(tile + " [ ] -> [T]");
+                board[tile.x, tile.y] = new Tile(tile.x, tile.y, tile.color - tile.activeComponent, false);
             }
 
-            if (board[subtile.x + dirX, subtile.y + dirY] == null) {
-                //Debug.Log(subtile + "[T] -> null");
-                board[subtile.x + dirX, subtile.y + dirY] = new Tile(subtile.x + dirX, subtile.y + dirY, subtile.activeComponent, true);
+            if (board[tile.x + dirX, tile.y + dirY] == null) {
+                Debug.Log(tile + " [T] -> null");
+                board[tile.x + dirX, tile.y + dirY] = new Tile(tile.x + dirX, tile.y + dirY, tile.activeComponent, true);
             } else {
-                //Debug.Log(subtile + "[T] -> [ ]");
-                board[subtile.x + dirX, subtile.y + dirY] += subtile.activeComponent;
-                board[subtile.x + dirX, subtile.y + dirY].activeComponent = subtile.activeComponent;
+                Debug.Log(tile + " [T] -> [ ]");
+                board[tile.x + dirX, tile.y + dirY] += tile.activeComponent;
+                board[tile.x + dirX, tile.y + dirY].activeComponent = tile.activeComponent;
             }
 
-            board[subtile.x + dirX, subtile.y + dirY].parent = subtile.parent;
-            if (subtile == activeTile) {
-                activeTile = board[subtile.x + dirX, subtile.y + dirY];
-            }
-            subtile = subtile.parent;
+            activeTiles[i] = board[tile.x + dirX, tile.y + dirY];
         }
 
         return true;
@@ -228,7 +217,7 @@ public class GameBoard : MonoBehaviour {
         if (board[tile.x + dirX, tile.y + dirY] == null) return true;
 
         Debug.Log("CanMoveActiveTile: " + board[tile.x + dirX, tile.y + dirY].color + " contains " + tile.activeComponent + ": " + (!board[tile.x + dirX, tile.y + dirY].Contains(tile.activeComponent)));
-        return  !board[tile.x + dirX, tile.y + dirY].Contains(tile.activeComponent);
+        return (!board[tile.x + dirX, tile.y + dirY].Contains(tile.activeComponent) || board[tile.x + dirX, tile.y + dirY].activeComponent == tile.activeComponent);
     }
 
 
@@ -251,12 +240,10 @@ public class GameBoard : MonoBehaviour {
 
 
     void ClearActiveTiles() {
-        Tile subtile = activeTile;
-        while (subtile != null) {
-            subtile.activeComponent = 0;
-            subtile = subtile.parent;
+        foreach (Tile tile in activeTiles) {
+            if (tile == null) return;
+            tile.activeComponent = 0;
         }
-
     }
 
 

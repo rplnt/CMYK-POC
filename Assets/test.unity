@@ -298,7 +298,7 @@ MonoBehaviour:
   tilePixelSize: 5
   width: 7
   height: 12
-  spawnGroupSize: 1
+  spawnGroupSize: 2
   score: 0
   total: 0
 --- !u!4 &1619524486

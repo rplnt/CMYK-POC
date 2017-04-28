@@ -8,7 +8,7 @@ public class Tile {
             return activeComponent != 0;
         }
     }
-    public Tile parent;
+    //public Tile parent;
 
     private static readonly byte[] cmyGen = { 1 << 0, 1 << 1, 1 << 2 };
     public static readonly byte color_c = 1 << 0;  // 1
