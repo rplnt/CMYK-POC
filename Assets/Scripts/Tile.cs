@@ -3,38 +3,45 @@ using System.Collections.Generic;
 using UnityEngine;
 
 public class Tile {
-    public bool active = false;
-    public Tile bottomSibling;
+    public bool active {
+        get {
+            return activeComponent != 0;
+        }
+    }
+    public Tile parent;
 
     private static readonly byte[] cmyGen = { 1 << 0, 1 << 1, 1 << 2 };
-    public static readonly byte color_c = 1 << 0;
-    public static readonly byte color_m = 1 << 1;
-    public static readonly byte color_y = 1 << 2;
+    public static readonly byte color_c = 1 << 0;  // 1
+    public static readonly byte color_m = 1 << 1;  // 2
+    public static readonly byte color_y = 1 << 2;  // 4
     public static readonly byte color_k = (byte)(color_c | color_m | color_y);
 
     public static Tile empty = new Tile(-1, -1, 0);
 
     public byte color;
-    public byte originalColor;
+    //public byte originalColor;
+    public byte activeComponent = 0;
 
     public int x { get; protected set; }
     public int y { get; protected set; }
 
     public Tile(int x, int y, bool active = false) {
-        this.active = active;
         this.x = x;
         this.y = y;
         this.color = cmyGen[Random.Range(0, 3)];
-        this.originalColor = color;
+        if (active) {
+            activeComponent = color;
+        }
     }
 
     public Tile(int x, int y, int c, bool active = false) {
         Debug.Assert(c < 256 && c >= 0, "New Tile Color overflow");
-        this.active = active;
         this.x = x;
         this.y = y;
         this.color = (byte)c;
-        this.originalColor = color;
+        if (active) {
+            activeComponent = color;
+        }
     }
 
     public Color GetColor() {
@@ -49,7 +56,9 @@ public class Tile {
     public static Tile operator +(Tile left, Tile right) {
         if (left == null) return right;
         if (right == null) return left;
-        return new Tile(left.x, left.y, left.color | right.color, left.active || right.active);
+        Tile newTile = new Tile(left.x, left.y, left.color | right.color, left.active || right.active);
+
+        return newTile;
     }
 
     public static Tile operator +(Tile left, byte c) {
@@ -96,6 +105,12 @@ public class Tile {
 
     public Tile MoveDown() {
         y--;
+        return this;
+    }
+
+    public Tile Move(int x, int y) {
+        this.x += x;
+        this.y += y;
         return this;
     }
 

@@ -294,12 +294,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   boardSR: {fileID: 1863272}
-  updateDelay: 0.5
+  updateDelay: 1
   tilePixelSize: 5
   width: 7
   height: 12
-  passThroughEnabled: 0
+  spawnGroupSize: 1
   score: 0
+  total: 0
 --- !u!4 &1619524486
 Transform:
   m_ObjectHideFlags: 0
