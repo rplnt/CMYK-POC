@@ -29,9 +29,9 @@ class Tile {
 
     public Color GetColor() {
         return new Color(
-            (color == color_m || color == color_y || (color == (color_m | color_y))) ? 0.9f : 0.0f,
-            (color == color_c || color == color_y || (color == (color_c | color_y))) ? 0.9f : 0.0f,
-            (color == color_c || color == color_m || (color == (color_c | color_m))) ? 0.9f : 0.0f,
+            (color == color_m || color == color_y || (color == (color_m | color_y))) ? 0.75f : 0.0f,
+            (color == color_c || color == color_y || (color == (color_c | color_y))) ? 0.75f : 0.0f,
+            (color == color_c || color == color_m || (color == (color_c | color_m))) ? 0.75f : 0.0f,
             1
             );
     }
@@ -104,8 +104,10 @@ public class GameBoard : MonoBehaviour {
     [Header("Game Options")]
     public int width;
     public int height;
+    public bool passThroughEnabled;
 
     public int score;
+    public int total;
 
     int spawnerX;
 
@@ -124,6 +126,7 @@ public class GameBoard : MonoBehaviour {
 
         board = new Tile[width, height];
         spawnerX = (width / 2);
+        total = 0;
 
         /* create board */
         boardTexture = new Texture2D(width * tilePixelSize, height * tilePixelSize);
@@ -137,7 +140,11 @@ public class GameBoard : MonoBehaviour {
         if (gameOver) return;
         bool redraw = false;
 
-        if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.DownArrow)) {
+        if (Input.GetKeyDown(KeyCode.DownArrow) && activeTile.y > 0) {
+            redraw = MoveTileDown(activeTile.x, activeTile.y);
+        }
+
+        if (Input.GetKeyDown(KeyCode.Space)) {
             while (activeTile.y > 0 && MoveTileDown(activeTile.x, activeTile.y)) {
                 redraw = true;
             }
@@ -158,6 +165,12 @@ public class GameBoard : MonoBehaviour {
             lastUpdate = Time.time;
             if (!MoveBoard()) {
                 Tile newTile = new Tile(spawnerX, height - 1);
+                total++;
+
+                if (total % 10 == 0) {
+                    Debug.Log("Speed up");
+                    updateDelay *= 0.9f;
+                }
 
                 if (board[spawnerX, height - 1] == null) {
                     activeTile = newTile;
@@ -198,25 +211,13 @@ public class GameBoard : MonoBehaviour {
     void PaintTile(int x, int y, Tile t) {
         for (int i = 0; i < tilePixelSize * tilePixelSize; i++) {
             Color c;
-            //switch (i) {
-            //    case 17:
-            //        c = t.GetSubcolor(Tile.color_c);
-            //        break;
-            //    case (tilePixelSize/2 + tilePixelSize * (tilePixelSize / 3) + 1):
-            //        c = t.GetSubcolor(Tile.color_m);
-            //        break;
-            //    case ():
-            //        c = t.GetSubcolor(Tile.color_y);
-            //        break;
-            //    default:
-            //        c = t.GetColor();
-            //        break;
-            //}
-
+            //if (t == activeTile && (i < tilePixelSize || i >= tilePixelSize * (tilePixelSize - 1) || i % tilePixelSize == 0 || i % tilePixelSize == tilePixelSize - 1)) { c = Color.white; }
             if (i == (tilePixelSize * tilePixelSize - tilePixelSize * (tilePixelSize / 3) - tilePixelSize / 2 - 1)) { c = t.GetSubcolor(Tile.color_c); }
             else if (i == (tilePixelSize / 2 + tilePixelSize * (tilePixelSize / 3) + 1)) { c = t.GetSubcolor(Tile.color_m); }
             else if (i == (tilePixelSize / 2 + tilePixelSize * (tilePixelSize / 3) - 1)) { c = t.GetSubcolor(Tile.color_y); } 
             else { c = t.GetColor(); }
+
+            if (t == activeTile && (i < tilePixelSize || i >= tilePixelSize * (tilePixelSize - 1) || i % tilePixelSize == 0 || i % tilePixelSize == tilePixelSize - 1)) { c *= 1.1f; }
 
             boardTexture.SetPixel(x * tilePixelSize + i % tilePixelSize, y * tilePixelSize + i / tilePixelSize, c);
         }
@@ -228,11 +229,11 @@ public class GameBoard : MonoBehaviour {
 
         if (board[newX, activeTile.y] == null) {
             if (activeTile.color == activeColor) {
-                Debug.Log("null -> [ ] -> null");
+                //Debug.Log("null -> [ ] -> null");
                 board[activeTile.x, activeTile.y] = null;
                 board[newX, activeTile.y] = activeTile.MoveSideways(direction);
-            } else {
-                Debug.Log("[ ] -> [ ] -> null ");
+            } else if (passThroughEnabled) {
+                //Debug.Log("[ ] -> [ ] -> null ");
                 board[activeTile.x, activeTile.y] -= activeColor;
                 board[newX, activeTile.y] = new Tile(newX, activeTile.y, activeColor);
                 activeTile = board[newX, activeTile.y];
@@ -240,10 +241,10 @@ public class GameBoard : MonoBehaviour {
             return true;
         } else if (board[newX, activeTile.y].Contains(activeTile.color) == false) {
             if (activeTile.color == activeColor) {
-                Debug.Log("null -> [ ] -> [ ]");
+                //Debug.Log("null -> [ ] -> [ ]");
                 board[activeTile.x, activeTile.y] = null;
-            } else {
-                Debug.Log("[ ] -> [ ] -> [ ]");
+            } else if (passThroughEnabled) {
+                //Debug.Log("[ ] -> [ ] -> [ ]");
                 board[activeTile.x, activeTile.y] -= activeColor;
             }
             board[newX, activeTile.y] += activeTile.color;
@@ -270,15 +271,17 @@ public class GameBoard : MonoBehaviour {
                     board[x, y - 1] = board[x, y].MoveDown();
                     board[x, y] = null;
                 } else {
-                    board[x, y] -= activeColor;
-                    if (board[x, y].color == 0) board[x, y] = null;
-                    board[x, y - 1] = new Tile(x, y - 1, activeColor);
-                    activeTile = board[x, y - 1];
+                    // I have no idea what this is supposed to be
+                    //board[x, y] -= activeColor;
+                    //if (board[x, y].color == 0) board[x, y] = null;
+                    //board[x, y - 1] = new Tile(x, y - 1, activeColor);
+                    //activeTile = board[x, y - 1];
                 }
                 return true;
             }
 
             if (board[x, y - 1] != null && board[x, y - 1].Contains(activeColor) == false) {
+                if (!passThroughEnabled && board[x, y].color != activeColor) return false;
                 board[x, y] -= activeColor;
                 if (board[x, y].color == 0) board[x, y] = null;
                 board[x, y - 1] += activeColor;
