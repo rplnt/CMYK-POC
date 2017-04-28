@@ -2,95 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-class Tile {
-    private static readonly byte[] cmyGen = { 1 << 0, 1 << 1, 1 << 2 };
-    public static readonly byte color_c = 1 << 0;
-    public static readonly byte color_m = 1 << 1;
-    public static readonly byte color_y = 1 << 2;
-    public static readonly byte color_k = (byte)(color_c | color_m | color_y);
 
-    public static Tile empty = new Tile(-1, -1, 0);
-
-    public byte color;
-
-    public int x { get; protected set; }
-    public int y { get; protected set; }
-
-    public Tile(int x, int y) {
-        this.color = cmyGen[Random.Range(0, 3)];
-        this.x = x;
-        this.y = y;
-    }
-
-    public Tile(int x, int y, int c) {
-        Debug.Assert(c < 256 && c >= 0, "New Tile Color overflow");
-        color = (byte)c;
-    }
-
-    public Color GetColor() {
-        return new Color(
-            (color == color_m || color == color_y || (color == (color_m | color_y))) ? 0.75f : 0.0f,
-            (color == color_c || color == color_y || (color == (color_c | color_y))) ? 0.75f : 0.0f,
-            (color == color_c || color == color_m || (color == (color_c | color_m))) ? 0.75f : 0.0f,
-            1
-            );
-    }
-
-    public static Tile operator +(Tile left, Tile right) {
-        if (left == null) return right;
-        if (right == null) return left;
-        return new Tile(left.x, left.y, left.color | right.color);
-    }
-
-    public static Tile operator +(Tile left, byte c) {
-        left.color |= c;
-        return left;
-    }
-
-    public static Tile operator -(Tile left, byte c) {
-        left.color ^= c;
-        return left;
-    }
-
-    public void Add(Tile other) {
-        if (other == null) return;
-        this.color |= other.color;
-    }
-
-    public void Add(byte other) {
-        this.color |= other;
-    }
-
-    public bool Contains(byte otherColor) {
-        return (this.color & otherColor) != 0;
-    }
-
-    public bool Contains(Tile other) {
-        if (other == null) return false;
-        return (this.color & other.color) != 0;
-    }
-
-    public Color GetSubcolor(byte c) {
-        if (this.Contains(c)) return new Tile(-1, -1, c).GetColor();
-        else return Color.black;
-    }
-
-    public override string ToString() {
-        return base.ToString() + "(" + this.color + ") @[" + x + "," + y + "]";
-    }
-
-    public Tile MoveSideways(int x) {
-        this.x += x;
-        return this;
-    }
-
-    public Tile MoveDown() {
-        y--;
-        return this;
-    }
-
-
-}
 
 
 public class GameBoard : MonoBehaviour {
@@ -113,7 +25,6 @@ public class GameBoard : MonoBehaviour {
 
     Tile[,] board;
     Tile activeTile;
-    byte activeColor;
 
     float lastUpdate = 0.0f;
     bool gameOver = false;
@@ -164,25 +75,12 @@ public class GameBoard : MonoBehaviour {
         if (Time.time > lastUpdate + updateDelay) {
             lastUpdate = Time.time;
             if (!MoveBoard()) {
-                Tile newTile = new Tile(spawnerX, height - 1);
-                total++;
+                SpawnNewTiles(1);
 
                 if (total % 10 == 0) {
                     Debug.Log("Speed up");
                     updateDelay *= 0.9f;
                 }
-
-                if (board[spawnerX, height - 1] == null) {
-                    activeTile = newTile;
-                } else if (board[spawnerX, height - 1].Contains(newTile.color) == false) {
-                    board[spawnerX, height - 1] += newTile.color;
-                } else {
-                    gameOver = true;
-                    Debug.Log("Game Over");
-                }            
-                
-                activeColor = activeTile.color;
-                board[spawnerX, height - 1] = activeTile;
             }
             redraw = true;
         }
@@ -191,6 +89,33 @@ public class GameBoard : MonoBehaviour {
             PaintBoard();
         }
 	}
+
+
+    void SpawnNewTiles(int size) {
+        Debug.Assert(size >= 1, "At least one tile has to be spawned");
+        Tile topTile = null;
+        Tile prevTile = null;
+        for (int i = 1; i <= size; i++) {
+            topTile = new Tile(spawnerX, height - size, true);
+            if (prevTile != null) {
+                topTile.bottomSibling = prevTile;
+            }
+            prevTile = topTile;
+            total++;
+        }
+
+        if (board[spawnerX, height - 1] == null) {
+            activeTile = topTile;
+        } else if (board[spawnerX, height - 1].Contains(topTile.color) == false) {
+            board[spawnerX, height - 1] += topTile.color;
+        } else {
+            gameOver = true;
+            Debug.Log("Game Over");
+        }
+
+        activeTile.originalColor = activeTile.color;
+        board[spawnerX, height - 1] = activeTile;
+    }
 
 
     void PaintBoard() {
@@ -217,7 +142,8 @@ public class GameBoard : MonoBehaviour {
             else if (i == (tilePixelSize / 2 + tilePixelSize * (tilePixelSize / 3) - 1)) { c = t.GetSubcolor(Tile.color_y); } 
             else { c = t.GetColor(); }
 
-            if (t == activeTile && (i < tilePixelSize || i >= tilePixelSize * (tilePixelSize - 1) || i % tilePixelSize == 0 || i % tilePixelSize == tilePixelSize - 1)) { c *= 1.1f; }
+            //if (t.active && (i < tilePixelSize || i >= tilePixelSize * (tilePixelSize - 1) || i % tilePixelSize == 0 || i % tilePixelSize == tilePixelSize - 1)) { c *= 1.5f; }
+            if (t.active) { c *= 2f; }
 
             boardTexture.SetPixel(x * tilePixelSize + i % tilePixelSize, y * tilePixelSize + i / tilePixelSize, c);
         }
@@ -228,26 +154,29 @@ public class GameBoard : MonoBehaviour {
         int newX = activeTile.x + direction;
 
         if (board[newX, activeTile.y] == null) {
-            if (activeTile.color == activeColor) {
+            if (activeTile.color == activeTile.originalColor) {
                 //Debug.Log("null -> [ ] -> null");
                 board[activeTile.x, activeTile.y] = null;
                 board[newX, activeTile.y] = activeTile.MoveSideways(direction);
             } else if (passThroughEnabled) {
                 //Debug.Log("[ ] -> [ ] -> null ");
-                board[activeTile.x, activeTile.y] -= activeColor;
-                board[newX, activeTile.y] = new Tile(newX, activeTile.y, activeColor);
+                board[activeTile.x, activeTile.y] -= activeTile.originalColor;
+                board[activeTile.x, activeTile.y].active = false;
+                board[newX, activeTile.y] = new Tile(newX, activeTile.y, activeTile.originalColor, true);
                 activeTile = board[newX, activeTile.y];
             }
             return true;
         } else if (board[newX, activeTile.y].Contains(activeTile.color) == false) {
-            if (activeTile.color == activeColor) {
+            if (activeTile.color == activeTile.originalColor) {
                 //Debug.Log("null -> [ ] -> [ ]");
                 board[activeTile.x, activeTile.y] = null;
             } else if (passThroughEnabled) {
                 //Debug.Log("[ ] -> [ ] -> [ ]");
-                board[activeTile.x, activeTile.y] -= activeColor;
+                board[activeTile.x, activeTile.y] -= activeTile.originalColor;
+                board[activeTile.x, activeTile.y].active = false;
             }
             board[newX, activeTile.y] += activeTile.color;
+            board[newX, activeTile.y].active = true;
             activeTile = board[newX, activeTile.y];
             return true;
         }
@@ -260,39 +189,40 @@ public class GameBoard : MonoBehaviour {
         Debug.Assert(board[x, y] != null, "Moving nonexisting tile");
         Debug.Assert(board[x, y].color != 0, "Moving empty tile " + board[x, y]);
 
-        if (y == 0) return false;
-
         /* active tile can pass through */
-        if (x == activeTile.x && y == activeTile.y) {
+        if (board[x, y].active) {
             //Debug.Log("Processing active tile " + board[x, y]);
-
-            if (board[x, y - 1] == null) {
-                if (board[x, y] == activeTile) {
-                    board[x, y - 1] = board[x, y].MoveDown();
-                    board[x, y] = null;
-                } else {
-                    // I have no idea what this is supposed to be
-                    //board[x, y] -= activeColor;
-                    //if (board[x, y].color == 0) board[x, y] = null;
-                    //board[x, y - 1] = new Tile(x, y - 1, activeColor);
-                    //activeTile = board[x, y - 1];
-                }
-                return true;
+            if (y == 0) {
+                board[x, y].active = false;
+                return false;
             }
 
-            if (board[x, y - 1] != null && board[x, y - 1].Contains(activeColor) == false) {
-                if (!passThroughEnabled && board[x, y].color != activeColor) return false;
-                board[x, y] -= activeColor;
-                if (board[x, y].color == 0) board[x, y] = null;
-                board[x, y - 1] += activeColor;
+            if (board[x, y - 1] == null) {
+                board[x, y - 1] = board[x, y].MoveDown();
+                board[x, y] = null;
+                return true;
+            } else if (board[x, y - 1].Contains(activeTile.originalColor) == false) {
+                if (!passThroughEnabled && board[x, y].color != activeTile.originalColor) return false;
+                board[x, y] -= activeTile.originalColor;
+                if (board[x, y].color == 0) {
+                    board[x, y] = null;
+                } else {
+                    board[x, y].active = false;
+                }
+                board[x, y - 1] += activeTile.originalColor;
+                board[x, y - 1].active = true;
                 activeTile = board[x, y - 1];
                 return true;
             }
-            
+
+            board[x, y].active = false;
+            return false;
         }
 
+        if (y == 0) return false;
         if (board[x, y].Contains(board[x, y - 1]) == false) {
             board[x, y - 1] += board[x, y].MoveDown();
+            //board[x, y - 1] += board[x, y].color;
             board[x, y] = null;
             return true;
         }
