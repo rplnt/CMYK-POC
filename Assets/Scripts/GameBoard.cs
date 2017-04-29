@@ -10,6 +10,7 @@ public class GameBoard : MonoBehaviour {
     public SpriteRenderer boardSR;
     Texture2D boardTexture;
 
+    [Header("Display Options")]
     public float updateDelay;
     public int tilePixelSize;
 
@@ -17,16 +18,20 @@ public class GameBoard : MonoBehaviour {
     public int width;
     public int height;
     public int spawnGroupSize;
+    public int speedUpRate;
+    public float speedUpMultiplier;
 
     bool slamming = false;
 
+    [Header("Stats")]
     public int score;
     public int total;
+
+    public event System.Action ScoreUpdated;
 
     int spawnerX;
 
     Tile[,] board;
-    //Tile activeTile;
     Tile[] activeTiles;
 
     float lastUpdate = 0.0f;
@@ -57,27 +62,42 @@ public class GameBoard : MonoBehaviour {
 
         if (slamming) {
             slamming = MoveActiveGroup(0, -1);
+            if (!slamming) {
+                ClearActiveTiles();
+            }
             redraw = true;
         } else if (ProcessInput()) {
             redraw = true;
-        } else if (Time.time > lastUpdate + updateDelay) {
-            score += ClearK();
+        }
+
+        if (Time.time > lastUpdate + updateDelay) {
+            // TODO make this comprehensible
             redraw = MoveBoard();
             if (!redraw) {
-                lastUpdate = Time.time;
-                if (!MoveActiveGroup(0, -1)) {
+                redraw = MoveActiveGroup(0, -1);
+                if (!redraw) {
+                    /* piece landed */
                     ClearActiveTiles();
+                    redraw = ClearK();
+                } else {
+                    lastUpdate = Time.time;
+                }
+
+                /* spawn new piece */
+                if (!redraw) {
                     if (!SpawnNewTiles(spawnGroupSize)) {
                         gameOver = true;
                         Debug.Log("Game Over");
                     }
 
-                    if ((total % (10 * spawnGroupSize)) == 0) {
+                    if ((total % (speedUpRate * spawnGroupSize)) == 0) {
                         Debug.Log("Speed up");
-                        updateDelay *= 0.9f;
+                        updateDelay *= speedUpMultiplier;
                     }
+
+                    lastUpdate = Time.time;
+                    redraw = true;
                 }
-                redraw = true;
             }
         }
 
@@ -90,7 +110,11 @@ public class GameBoard : MonoBehaviour {
     bool ProcessInput() {
         bool redraw = false;
         if (Input.GetKeyDown(KeyCode.DownArrow)) {
-            redraw = MoveActiveGroup(0, -1);
+            redraw |= MoveActiveGroup(0, -1);
+        }
+
+        if (Input.GetKeyDown(KeyCode.UpArrow)) {
+            redraw |= SwapActiveGroup();
         }
 
         if (Input.GetKeyDown(KeyCode.Space)) {
@@ -112,13 +136,12 @@ public class GameBoard : MonoBehaviour {
 
         /* prepare tiles */
         for (int i = size; i > 0; i--) {
-            // FIXME allow same-color tiles
             activeTiles[i - 1] = new Tile(spawnerX, height - i, true);
 
             /* check for game over */
             if (board[spawnerX, height - i] == null) continue;
             if (board[spawnerX, height - i].Contains(activeTiles[i - 1].color)) {
-                Debug.Log("Position at " + spawnerX + ", " + (height - i) + " doesn't seem to be good for " + activeTiles[i - 1]);
+                //Debug.Log("Position at " + spawnerX + ", " + (height - i) + " doesn't seem to be good for " + activeTiles[i - 1]);
                 return false;
             }
         }
@@ -139,67 +162,52 @@ public class GameBoard : MonoBehaviour {
     }
 
 
-    void PaintBoard() {
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                if (board[x, y] == null) {
-                    PaintTile(x, y, Tile.empty);
-                } else {
-                    PaintTile(x, y, board[x, y]);
-                }
-                
-            }
+    bool SwapActiveGroup() {
+        if (activeTiles.Length != 2) return false;
+
+        if (CanMoveActiveTile(activeTiles[0], 0, -1) && CanMoveActiveTile(activeTiles[1], 0, +1)) {
+            Tile swapTile = activeTiles[1];
+            activeTiles[1] = activeTiles[0].Move(0, -1);
+            activeTiles[0] = swapTile.Move(0, +1);
+
+            board[activeTiles[1].x, activeTiles[1].y] = activeTiles[1];
+            board[activeTiles[0].x, activeTiles[0].y] = activeTiles[0];
+
+            return true;
         }
 
-        boardTexture.Apply();
-    }
-
-    void PaintTile(int x, int y, Tile t) {
-        for (int i = 0; i < tilePixelSize * tilePixelSize; i++) {
-            Color c;
-            if (i == (tilePixelSize * tilePixelSize - tilePixelSize * (tilePixelSize / 3) - tilePixelSize / 2 - 1)) { c = t.GetSubcolor(Tile.color_c); }
-            else if (i == (tilePixelSize / 2 + tilePixelSize * (tilePixelSize / 3) + 1)) { c = t.GetSubcolor(Tile.color_m); }
-            else if (i == (tilePixelSize / 2 + tilePixelSize * (tilePixelSize / 3) - 1)) { c = t.GetSubcolor(Tile.color_y); } 
-            else { c = t.GetColor(); }
-
-            if (t.active) { c *= 2f; }
-
-            boardTexture.SetPixel(x * tilePixelSize + i % tilePixelSize, y * tilePixelSize + i / tilePixelSize, c);
-        }
+        return false;
     }
 
 
     bool MoveActiveGroup(int dirX, int dirY) {
         Debug.Assert(dirY <= 0, "MoveActiveGroup: Can't move upwards");
         bool canMove = true;
-        /* check if all can be moved first */
+        /* check if all subtiles can be moved */
         for (int i = activeTiles.Length - 1; i >= 0; i--) {
             if (activeTiles[i] == null) return false;
             canMove = canMove && CanMoveActiveTile(activeTiles[i], dirX, dirY);
         }
 
-        if (!canMove) {
-            Debug.Log("Cannot move active group");
-            return false;
-        }
+        if (!canMove) return false;
 
         for (int i = activeTiles.Length - 1; i >= 0; i--) {
             Tile tile = activeTiles[i];
             Debug.Assert(tile.active, "Operating with inactive subtile " + tile);
 
             if (tile.color == tile.activeComponent) {
-                Debug.Log(tile + " null -> [T]");
+                //Debug.Log(tile + " null -> [T]");
                 board[tile.x, tile.y] = null;
             } else {
-                Debug.Log(tile + " [ ] -> [T]");
+                //Debug.Log(tile + " [ ] -> [T]");
                 board[tile.x, tile.y] = new Tile(tile.x, tile.y, tile.color - tile.activeComponent, false);
             }
 
             if (board[tile.x + dirX, tile.y + dirY] == null) {
-                Debug.Log(tile + " [T] -> null");
+                //Debug.Log(tile + " [T] -> null");
                 board[tile.x + dirX, tile.y + dirY] = new Tile(tile.x + dirX, tile.y + dirY, tile.activeComponent, true);
             } else {
-                Debug.Log(tile + " [T] -> [ ]");
+                //Debug.Log(tile + " [T] -> [ ]");
                 board[tile.x + dirX, tile.y + dirY] += tile.activeComponent;
                 board[tile.x + dirX, tile.y + dirY].activeComponent = tile.activeComponent;
             }
@@ -212,11 +220,12 @@ public class GameBoard : MonoBehaviour {
 
 
     bool CanMoveActiveTile(Tile tile, int dirX, int dirY) {
-        Debug.Assert(tile.activeComponent != 0, "CanMoveActiveTile: Trying to move non-active tile");
-        if (tile.x + dirX > width - 1 || tile.x + dirX < 0 || tile.y + dirY < 0) return false;
+        if (tile.activeComponent == 0) return false;
+        if (tile.x + dirX > width - 1 || tile.x + dirX < 0 || tile.y + dirY < 0 || tile.y + dirY > height -1) return false;
         if (board[tile.x + dirX, tile.y + dirY] == null) return true;
 
-        Debug.Log("CanMoveActiveTile: " + board[tile.x + dirX, tile.y + dirY].color + " contains " + tile.activeComponent + ": " + (!board[tile.x + dirX, tile.y + dirY].Contains(tile.activeComponent)));
+        //Debug.Log("CanMoveActiveTile: " + board[tile.x + dirX, tile.y + dirY].color + " contains " + tile.activeComponent + ": " + (!board[tile.x + dirX, tile.y + dirY].Contains(tile.activeComponent)));
+        //if target tile doesn't contain our active component we can move; if its active component is equal to ours, we can move as well (as it is move out)
         return (!board[tile.x + dirX, tile.y + dirY].Contains(tile.activeComponent) || board[tile.x + dirX, tile.y + dirY].activeComponent == tile.activeComponent);
     }
 
@@ -229,11 +238,10 @@ public class GameBoard : MonoBehaviour {
         if (y == 0) return false;
 
         if (board[x, y - 1] == null) {
-            board[x, y - 1] = board[x, y].MoveDown();
+            board[x, y - 1] = board[x, y].Move(0, -1);
             board[x, y] = null;
             return true;
         }
-
 
         return false;
     }
@@ -247,7 +255,7 @@ public class GameBoard : MonoBehaviour {
     }
 
 
-    int ClearK() {
+    bool ClearK() {
         int cleared = 0;
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
@@ -259,7 +267,13 @@ public class GameBoard : MonoBehaviour {
             }
         }
 
-        return cleared;
+        if (cleared == 2) cleared = 3;
+
+        score += cleared;
+        if (cleared != 0 && ScoreUpdated != null) {
+            ScoreUpdated();
+        }
+        return cleared != 0;
     }
 
 
@@ -274,5 +288,33 @@ public class GameBoard : MonoBehaviour {
         }
 
         return movedAnything;
+    }
+
+
+    void PaintBoard() {
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (board[x, y] == null) {
+                    PaintTile(x, y, Tile.empty);
+                } else {
+                    PaintTile(x, y, board[x, y]);
+                }
+
+            }
+        }
+
+        boardTexture.Apply();
+    }
+
+
+    void PaintTile(int x, int y, Tile t) {
+        for (int i = 0; i < tilePixelSize * tilePixelSize; i++) {
+            Color c;
+            if (i == (tilePixelSize * tilePixelSize - tilePixelSize * (tilePixelSize / 3) - tilePixelSize / 2 - 1)) { c = t.GetSubcolor(Tile.color_c); } else if (i == (tilePixelSize / 2 + tilePixelSize * (tilePixelSize / 3) + 1)) { c = t.GetSubcolor(Tile.color_m); } else if (i == (tilePixelSize / 2 + tilePixelSize * (tilePixelSize / 3) - 1)) { c = t.GetSubcolor(Tile.color_y); } else { c = t.GetColor(); }
+
+            if (t.active) { c *= 2f; }
+
+            boardTexture.SetPixel(x * tilePixelSize + i % tilePixelSize, y * tilePixelSize + i / tilePixelSize, c);
+        }
     }
 }

@@ -19,7 +19,6 @@ public class Tile {
     public static Tile empty = new Tile(-1, -1, 0);
 
     public byte color;
-    //public byte originalColor;
     public byte activeComponent = 0;
 
     public int x { get; protected set; }
@@ -53,14 +52,6 @@ public class Tile {
             );
     }
 
-    public static Tile operator +(Tile left, Tile right) {
-        if (left == null) return right;
-        if (right == null) return left;
-        Tile newTile = new Tile(left.x, left.y, left.color | right.color, left.active || right.active);
-
-        return newTile;
-    }
-
     public static Tile operator +(Tile left, byte c) {
         left.color |= c;
         return left;
@@ -71,41 +62,13 @@ public class Tile {
         return left;
     }
 
-    public void Add(Tile other) {
-        if (other == null) return;
-        this.color |= other.color;
-    }
-
-    public void Add(byte other) {
-        this.color |= other;
-    }
-
     public bool Contains(byte otherColor) {
         return (this.color & otherColor) != 0;
-    }
-
-    public bool Contains(Tile other) {
-        if (other == null) return false;
-        return (this.color & other.color) != 0;
     }
 
     public Color GetSubcolor(byte c) {
         if (this.Contains(c)) return new Tile(-1, -1, c).GetColor();
         else return Color.black;
-    }
-
-    public override string ToString() {
-        return base.ToString() + "(" + this.color + ") @[" + x + "," + y + "]";
-    }
-
-    public Tile MoveSideways(int x) {
-        this.x += x;
-        return this;
-    }
-
-    public Tile MoveDown() {
-        y--;
-        return this;
     }
 
     public Tile Move(int x, int y) {
@@ -114,5 +77,7 @@ public class Tile {
         return this;
     }
 
-
+    public override string ToString() {
+        return base.ToString() + "(" + this.color + ") @[" + x + "," + y + "]";
+    }
 }
